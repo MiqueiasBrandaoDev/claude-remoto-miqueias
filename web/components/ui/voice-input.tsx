@@ -6,6 +6,12 @@ import { AnimatePresence, motion } from "motion/react";
 
 import { cn } from "@/lib/utils";
 
+export interface VoiceInputHandle {
+  stop: () => void;
+  start: () => void;
+  isListening: () => boolean;
+}
+
 interface VoiceInputProps {
   onStart?: () => void;
   onStop?: () => void;
@@ -14,7 +20,10 @@ interface VoiceInputProps {
   className?: string;
 }
 
-export function VoiceInput({ className, onStart, onStop, onTranscript }: VoiceInputProps) {
+export const VoiceInput = React.forwardRef<VoiceInputHandle, VoiceInputProps>(function VoiceInput(
+  { className, onStart, onStop, onTranscript },
+  ref
+) {
   const [listening, setListening] = React.useState(false);
   const [time, setTime] = React.useState(0);
   const [supported, setSupported] = React.useState(true);
@@ -48,6 +57,9 @@ export function VoiceInput({ className, onStart, onStop, onTranscript }: VoiceIn
     rec.interimResults = true;
 
     rec.onresult = (event: any) => {
+      // se o usuario ja parou (ou enviou), ignora transcricoes tardias pra nao
+      // repopular o campo depois do envio.
+      if (!shouldListenRef.current) return;
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const res = event.results[i];
@@ -59,7 +71,7 @@ export function VoiceInput({ className, onStart, onStop, onTranscript }: VoiceIn
 
     // Chrome encerra sozinho apos uma pausa. Enquanto o usuario NAO clicou pra
     // parar, reiniciamos automaticamente (com pequeno atraso pra nao dar
-    // InvalidStateError). So para de verdade no clique manual.
+    // InvalidStateError). So para de verdade no clique manual (ou no envio).
     rec.onend = () => {
       if (!shouldListenRef.current) return;
       setTimeout(() => {
@@ -96,7 +108,7 @@ export function VoiceInput({ className, onStart, onStop, onTranscript }: VoiceIn
     };
   }, []); // <- UMA vez, nunca recriado por re-render
 
-  const start = () => {
+  const start = React.useCallback(() => {
     if (!recRef.current) return;
     shouldListenRef.current = true;
     finalRef.current = "";
@@ -108,9 +120,10 @@ export function VoiceInput({ className, onStart, onStop, onTranscript }: VoiceIn
     try {
       recRef.current.start();
     } catch {}
-  };
+  }, []);
 
-  const stop = () => {
+  const stop = React.useCallback(() => {
+    if (!shouldListenRef.current && !listening) return;
     shouldListenRef.current = false; // <- so aqui o reconhecimento para de verdade
     setListening(false);
     onStopRef.current?.();
@@ -121,9 +134,12 @@ export function VoiceInput({ className, onStart, onStop, onTranscript }: VoiceIn
     try {
       recRef.current?.stop();
     } catch {}
-  };
+  }, [listening]);
 
   const toggle = () => (listening ? stop() : start());
+
+  // expoe controle imperativo: o composer chama stop() ao enviar a mensagem.
+  React.useImperativeHandle(ref, () => ({ stop, start, isListening: () => shouldListenRef.current }), [stop, start]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -183,4 +199,4 @@ export function VoiceInput({ className, onStart, onStop, onTranscript }: VoiceIn
       </motion.div>
     </div>
   );
-}
+});

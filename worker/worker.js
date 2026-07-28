@@ -1,29 +1,30 @@
 // ============================================================================
-// PAINEL IA CAMOZZI - WORKER LOCAL (chat transparente)
+// PAINEL IA - WORKER LOCAL (chat transparente)
 // ----------------------------------------------------------------------------
-// Modelo: UMA empresa (Camozzi), UMA assinatura Anthropic, VARIOS usuarios.
-//  - Auth: token unico da assinatura via CLAUDE_CODE_OAUTH_TOKEN (.env). Sem
-//    copiar credencial -> sem "sessao expirou".
-//  - Workspace: UNICO da empresa (empresa/workspace) — todos veem os mesmos arquivos.
-//  - Contexto/historico: isolado por usuario (usuarios/<id>/.claude via CONFIG_DIR).
+// UM usuario (o dono da maquina), UMA assinatura Anthropic.
+//  - Auth: token da assinatura via CLAUDE_CODE_OAUTH_TOKEN (.env) ou a credencial
+//    local ja logada. Sem copiar credencial -> sem "sessao expirou".
+//  - Workspace: a pasta configurada em WORKSPACE_DIR.
+//  - Historico: o MESMO do Claude Code / extensao do VS Code para essa pasta,
+//    lido de ~/.claude/projects/<pasta-encodada>. Nada isolado, nada duplicado.
 //
 // 100% TRANSPARENTE: sem guardrails, sem mascarar slash/modelo. O que o usuario
 // manda e o que a IA responde vao crus. Mostra TODA atividade da IA (criar/ler/
 // editar arquivo, bash, busca) via cartoes de atividade.
 //
-// Rodar:  node worker.js   (le .env com CLAUDE_CODE_OAUTH_TOKEN)
+// Rodar:  node worker.js   (le .env com CLAUDE_CODE_OAUTH_TOKEN opcional)
 // ============================================================================
 
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import os from 'node:os';
 import WebSocket from 'ws';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Carrega variaveis de .env (token da conta Camozzi etc) antes de tudo.
+// Carrega variaveis de .env (token da conta etc) antes de tudo.
 function loadEnv() {
   const files = [join(__dirname, '..', '.env'), join(__dirname, '.env')];
   for (const f of files) {
@@ -54,14 +55,18 @@ const WORKER_TOKEN = process.env.WORKER_TOKEN || 'troque-esse-token';
 const MODEL = process.env.MODEL || 'sonnet';
 const OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN || '';
 
-const SHARED_WORKSPACE = process.env.WORKSPACE_DIR || join(__dirname, 'empresa', 'workspace');
-const USERS_DIR = process.env.USERS_DIR || join(__dirname, 'usuarios');
+const WORKSPACE = process.env.WORKSPACE_DIR || join(__dirname, 'empresa', 'workspace');
+// Config do Claude Code: o MESMO do VS Code/CLI (~/.claude), pra o historico e as
+// conversas serem exatamente os dessa pasta. Nada de config isolado por usuario.
+const CLAUDE_HOME = process.env.CLAUDE_CONFIG_DIR || join(os.homedir(), '.claude');
+const MODEL_FILE = join(__dirname, 'model.txt');
 const VALID_MODELS = ['haiku', 'sonnet', 'opus'];
 
-mkdirSync(SHARED_WORKSPACE, { recursive: true });
-mkdirSync(USERS_DIR, { recursive: true });
-console.log('[worker] claude bin:', CLAUDE_BIN, '| modelo:', MODEL);
-console.log('[worker] auth:', OAUTH_TOKEN ? 'token da assinatura (env) OK' : 'sem token — Claude pode pedir login');
+mkdirSync(WORKSPACE, { recursive: true });
+console.log('[worker] claude bin:', CLAUDE_BIN);
+console.log('[worker] workspace:', WORKSPACE);
+console.log('[worker] config (~/.claude):', CLAUDE_HOME);
+console.log('[worker] auth:', OAUTH_TOKEN ? 'token da assinatura (env) OK' : 'credencial local ja logada');
 
 let ws;
 let reconnectTimer = null;
@@ -95,32 +100,20 @@ function send(obj) {
 }
 
 // ---------------------------------------------------------------------------
-// Contexto de um USUARIO: config isolado (historico) + workspace UNICO da empresa.
-// Sem guardrails, sem copiar credencial (auth vem do token da env).
+// Modelo preferido (setado via /model). Persistido em model.txt (unico).
 // ---------------------------------------------------------------------------
-function prepareUser(userId) {
-  const safe = String(userId || 'default').replace(/[^a-z0-9_-]/gi, '_');
-  const base = join(USERS_DIR, safe);
-  const configDir = join(base, '.claude');
-  mkdirSync(configDir, { recursive: true });
-  mkdirSync(SHARED_WORKSPACE, { recursive: true });
-  // modelo preferido do usuario (setado via /model)
-  let model = MODEL;
-  const modelFile = join(base, 'model.txt');
-  if (existsSync(modelFile)) {
-    const saved = readFileSync(modelFile, 'utf8').trim();
-    if (VALID_MODELS.includes(saved)) model = saved;
-  }
-  return { configDir, workspace: SHARED_WORKSPACE, safe, base, model };
+function loadModel() {
+  try {
+    const saved = readFileSync(MODEL_FILE, 'utf8').trim();
+    if (VALID_MODELS.includes(saved)) return saved;
+  } catch {}
+  return MODEL;
 }
-
-// Troca o modelo do usuario (via /model). Persiste em model.txt.
-function setModel({ jobId, client, model }) {
-  const { base, safe } = prepareUser(client);
+function setModel({ jobId, model }) {
   const m = String(model || '').toLowerCase();
   if (!VALID_MODELS.includes(m)) { send({ type: 'set-model', jobId, ok: false, error: 'modelo invalido' }); return; }
-  try { writeFileSync(join(base, 'model.txt'), m); } catch {}
-  console.log(`[set-model] usuario=${safe} -> ${m}`);
+  try { writeFileSync(MODEL_FILE, m); } catch {}
+  console.log(`[set-model] -> ${m}`);
   send({ type: 'set-model', jobId, ok: true, model: m });
 }
 
@@ -130,9 +123,9 @@ function setModel({ jobId, client, model }) {
 function relTo(workspace, p) {
   if (!p) return p;
   const norm = String(p).replace(/\\/g, '/');
-  const ws = workspace.replace(/\\/g, '/').replace(/\/+$/, '');
-  if (norm === ws) return '';
-  if (norm.startsWith(ws + '/')) return norm.slice(ws.length + 1);
+  const wsn = workspace.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (norm === wsn) return '';
+  if (norm.startsWith(wsn + '/')) return norm.slice(wsn.length + 1);
   return norm;
 }
 function sanitizeCmd(workspace, cmd) {
@@ -157,8 +150,8 @@ function buildActivity(block, workspace) {
   return null;
 }
 
-function runJob({ jobId, prompt, client, permissionMode, resume }) {
-  const { configDir, workspace, safe, model } = prepareUser(client);
+function runJob({ jobId, prompt, permissionMode, resume }) {
+  const model = loadModel();
 
   // prompt vai CRU (sem mascarar), por STDIN (evita problema de escaping).
   const args = [
@@ -171,14 +164,15 @@ function runJob({ jobId, prompt, client, permissionMode, resume }) {
   ];
   if (resume) args.push('--resume', resume);
 
-  console.log(`[job ${jobId}] usuario=${safe} modelo=${model}`);
+  console.log(`[job ${jobId}] modelo=${model}${resume ? ' resume=' + resume : ''}`);
   const started = Date.now();
 
-  const childEnv = { ...process.env, CLAUDE_CONFIG_DIR: configDir };
+  // usa o ~/.claude padrao (mesmo do VS Code) -> conversas caem no historico da pasta.
+  const childEnv = { ...process.env, CLAUDE_CONFIG_DIR: CLAUDE_HOME };
   if (OAUTH_TOKEN) childEnv.CLAUDE_CODE_OAUTH_TOKEN = OAUTH_TOKEN;
   delete childEnv.ANTHROPIC_API_KEY;
 
-  const child = spawn(CLAUDE_BIN, args, { cwd: workspace, env: childEnv, shell: process.platform === 'win32' && !/\.(exe|cmd|bat)$/i.test(CLAUDE_BIN) });
+  const child = spawn(CLAUDE_BIN, args, { cwd: WORKSPACE, env: childEnv, shell: process.platform === 'win32' && !/\.(exe|cmd|bat)$/i.test(CLAUDE_BIN) });
   child.stdin.write(prompt);
   child.stdin.end();
 
@@ -209,7 +203,7 @@ function runJob({ jobId, prompt, client, permissionMode, resume }) {
     if (evt.type === 'assistant' && Array.isArray(evt.message?.content)) {
       for (const block of evt.message.content) {
         if (block?.type === 'tool_use') {
-          const a = buildActivity(block, workspace);
+          const a = buildActivity(block, WORKSPACE);
           if (a) send({ type: 'activity', jobId, ...a });
         }
       }
@@ -238,62 +232,97 @@ function runJob({ jobId, prompt, client, permissionMode, resume }) {
 }
 
 // ---------------------------------------------------------------------------
-// HISTORICO (le os JSONL que o Claude Code ja salva por usuario). Sem limpar
-// nada — transparente.
+// HISTORICO: o MESMO do Claude Code / VS Code para ESTA pasta.
+// O Claude Code guarda cada conversa em ~/.claude/projects/<pasta-encodada>/*.jsonl.
+// A pasta e o caminho absoluto com todo caractere nao-alfanumerico virando "-".
 // ---------------------------------------------------------------------------
-function projectDirs(configDir) {
-  const base = join(configDir, 'projects');
-  if (!existsSync(base)) return [];
-  return readdirSync(base, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => join(base, d.name));
+function encodePath(p) {
+  return p.replace(/[^a-zA-Z0-9]/g, '-');
 }
+function workspaceHistoryDir() {
+  const projectsBase = join(CLAUDE_HOME, 'projects');
+  if (!existsSync(projectsBase)) return null;
+  const wantEnc = encodePath(resolve(WORKSPACE)).toLowerCase();
+  let names = [];
+  try { names = readdirSync(projectsBase, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch { return null; }
+  // 1) casa pelo nome encodado (case-insensitive: Windows nao diferencia)
+  const hit = names.find((n) => n.toLowerCase() === wantEnc);
+  if (hit) return join(projectsBase, hit);
+  // 2) fallback: casa pelo campo cwd salvo dentro dos JSONL
+  const wantAbs = resolve(WORKSPACE).replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
+  for (const n of names) {
+    const dir = join(projectsBase, n);
+    let files = [];
+    try { files = readdirSync(dir).filter((f) => f.endsWith('.jsonl')); } catch { continue; }
+    if (!files.length) continue;
+    try {
+      const firstLine = readFileSync(join(dir, files[0]), 'utf8').split('\n').find((l) => l.trim());
+      const o = firstLine ? JSON.parse(firstLine) : null;
+      const cwd = (o?.cwd || '').replace(/\\/g, '/').toLowerCase().replace(/\/+$/, '');
+      if (cwd && cwd === wantAbs) return dir;
+    } catch {}
+  }
+  return null;
+}
+
 function extractText(content) {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) return content.filter((b) => b && b.type === 'text').map((b) => b.text || '').join('');
   return '';
 }
 function readSessionMeta(file) {
-  let title = null, firstUser = null, updatedAt = null, turns = 0;
+  let title = null, firstUser = null, updatedAt = null, turns = 0, sidechain = false;
   try {
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       if (!line.trim()) continue;
       let o; try { o = JSON.parse(line); } catch { continue; }
+      if (o.isSidechain === true) sidechain = true; // conversa de sub-agente: nao listar
       if (o.type === 'ai-title' && o.aiTitle) title = o.aiTitle;
+      if (o.type === 'summary' && o.summary && !title) title = o.summary;
       if (o.type === 'user' && o.message?.role === 'user') {
         const t = extractText(o.message.content).trim();
-        if (t && !firstUser) firstUser = t;
-        if (t) turns++;
+        // ignora wrappers internos e comandos crus na contagem/titulo
+        const real = t && !t.startsWith('<') && !t.startsWith('Caveat:');
+        if (real && !firstUser) firstUser = t;
+        if (real) turns++;
       }
       if (o.timestamp) updatedAt = o.timestamp;
     }
   } catch {}
   const sessionId = file.split(/[\\/]/).pop().replace(/\.jsonl$/, '');
-  return { sessionId, title: title || (firstUser ? firstUser.slice(0, 60) : 'Conversa sem titulo'), updatedAt: updatedAt || null, turns, mtime: statSync(file).mtimeMs };
+  return {
+    sessionId,
+    title: title || (firstUser ? firstUser.slice(0, 60) : 'Conversa sem titulo'),
+    updatedAt: updatedAt || null,
+    turns,
+    sidechain,
+    mtime: statSync(file).mtimeMs,
+  };
 }
-function listHistory({ jobId, client }) {
-  const { configDir, safe } = prepareUser(client);
+function listHistory({ jobId }) {
+  const dir = workspaceHistoryDir();
   const sessions = [];
-  for (const dir of projectDirs(configDir)) {
+  if (dir) {
     for (const f of readdirSync(dir)) {
       if (f.endsWith('.jsonl')) { try { sessions.push(readSessionMeta(join(dir, f))); } catch {} }
     }
   }
-  const clean = sessions.filter((s) => s.turns > 0).sort((a, b) => b.mtime - a.mtime);
-  console.log(`[history-list] usuario=${safe} -> ${clean.length} conversas`);
+  const clean = sessions.filter((s) => s.turns > 0 && !s.sidechain).sort((a, b) => b.mtime - a.mtime);
+  console.log(`[history-list] ${clean.length} conversas em ${dir || '(nenhuma pasta de historico)'}`);
   send({ type: 'history-list', jobId, sessions: clean });
 }
-function loadHistory({ jobId, client, sessionId }) {
-  const { configDir, workspace, safe } = prepareUser(client);
-  let messages = [];
-  for (const dir of projectDirs(configDir)) {
-    const file = join(dir, sessionId + '.jsonl');
-    if (!existsSync(file)) continue;
+function loadHistory({ jobId, sessionId }) {
+  const dir = workspaceHistoryDir();
+  const messages = [];
+  const file = dir ? join(dir, sessionId + '.jsonl') : null;
+  if (file && existsSync(file)) {
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       if (!line.trim()) continue;
       let o; try { o = JSON.parse(line); } catch { continue; }
       if (o.type === 'user' && o.message?.role === 'user') {
         const text = extractText(o.message.content).trim();
         // pula wrappers internos do Claude Code (nao sao mensagens reais do usuario)
-        if (text && !text.startsWith('<local-command-caveat>') && !text.startsWith('<command-')) {
+        if (text && !text.startsWith('<local-command-caveat>') && !text.startsWith('<command-') && !text.startsWith('Caveat:')) {
           messages.push({ role: 'user', text });
         }
         continue;
@@ -302,38 +331,35 @@ function loadHistory({ jobId, client, sessionId }) {
         for (const block of o.message.content) {
           if (block?.type === 'text' && block.text && block.text.trim()) {
             const tx = block.text.trim();
-            // pula ruido de slash commands antigos rodados no modo -p
             if (tx === 'No response requested.' || tx.startsWith('<command-')) continue;
             messages.push({ role: 'assistant', text: block.text });
           } else if (block?.type === 'tool_use') {
-            const a = buildActivity(block, workspace);
+            const a = buildActivity(block, WORKSPACE);
             if (a) messages.push({ role: 'activity', ...a });
           }
         }
       }
     }
-    break;
   }
-  console.log(`[history-load] usuario=${safe} sessao=${sessionId} -> ${messages.length} itens`);
+  console.log(`[history-load] sessao=${sessionId} -> ${messages.length} itens`);
   send({ type: 'history-load', jobId, sessionId, messages });
 }
 
 // ---------------------------------------------------------------------------
 // SLASH COMMANDS: built-in + comandos da equipe (workspace/.claude/commands e
-// per-user configDir/commands). Alimenta o autocomplete do "/".
+// ~/.claude/commands globais). Alimenta o autocomplete do "/".
 // ---------------------------------------------------------------------------
 // So comandos que FUNCIONAM na interface do painel (cada um tem uma acao nativa).
 const BUILTIN_COMMANDS = [
   { name: '/help', description: 'Mostra os comandos disponiveis' },
   { name: '/clear', description: 'Limpa a conversa' },
   { name: '/resume', description: 'Abre o historico de conversas' },
-  { name: '/config', description: 'Abre as configuracoes' },
   { name: '/model', description: 'Ver ou trocar o modelo (rapido/padrao/avancado)' },
   { name: '/cost', description: 'Mostra o custo da sessao' },
-  { name: '/memory', description: 'Abre o contexto da empresa (CLAUDE.md)' },
+  { name: '/memory', description: 'Abre o contexto do projeto (CLAUDE.md)' },
   { name: '/agents', description: 'Lista os comandos/skills da equipe' },
   { name: '/review', description: 'Revisa os arquivos do workspace' },
-  { name: '/init', description: 'Cria/atualiza o contexto da empresa' },
+  { name: '/init', description: 'Cria/atualiza o contexto do projeto' },
 ];
 
 function scanCommands(dir) {
@@ -356,19 +382,18 @@ function scanCommands(dir) {
   return out;
 }
 
-function listCommands({ jobId, client }) {
-  const { configDir, workspace, safe, model } = prepareUser(client);
-  // comandos de projeto ficam em workspace/.claude/commands; per-user em configDir/commands
-  const custom = [...scanCommands(join(workspace, '.claude')), ...scanCommands(configDir)];
+function listCommands({ jobId }) {
+  // comandos de projeto em workspace/.claude/commands; globais em ~/.claude/commands
+  const custom = [...scanCommands(join(WORKSPACE, '.claude')), ...scanCommands(CLAUDE_HOME)];
   const map = new Map();
   for (const c of [...BUILTIN_COMMANDS, ...custom]) map.set(c.name, c);
   const commands = [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-  console.log(`[list-commands] usuario=${safe} -> ${commands.length} comandos (${custom.length} da equipe)`);
-  send({ type: 'list-commands', jobId, commands, model });
+  console.log(`[list-commands] ${commands.length} comandos (${custom.length} da equipe)`);
+  send({ type: 'list-commands', jobId, commands, model: loadModel() });
 }
 
 // ---------------------------------------------------------------------------
-// FILE EXPLORER: arvore e leitura do WORKSPACE compartilhado. Confinado a ele.
+// FILE EXPLORER: arvore e leitura do WORKSPACE. Confinado a ele.
 // ---------------------------------------------------------------------------
 const IGNORE = new Set(['node_modules', '.git', '.DS_Store', '.claude']);
 function buildTree(dir, rel = '', depth = 0) {
@@ -385,25 +410,23 @@ function buildTree(dir, rel = '', depth = 0) {
   nodes.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'dir' ? -1 : 1));
   return nodes;
 }
-function fsTree({ jobId, client }) {
-  const { workspace, safe } = prepareUser(client);
-  const tree = buildTree(workspace);
-  console.log(`[fs-tree] usuario=${safe} -> ${tree.length} itens na raiz`);
+function fsTree({ jobId }) {
+  const tree = buildTree(WORKSPACE);
+  console.log(`[fs-tree] ${tree.length} itens na raiz`);
   send({ type: 'fs-tree', jobId, tree });
 }
-function safeResolve(workspace, relPath) {
+function safeResolve(relPath) {
   const clean = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  const abs = join(workspace, clean);
-  const normWs = workspace.replace(/\\/g, '/').replace(/\/+$/, '');
+  const abs = join(WORKSPACE, clean);
+  const normWs = WORKSPACE.replace(/\\/g, '/').replace(/\/+$/, '');
   const normAbs = abs.replace(/\\/g, '/');
   if (normAbs !== normWs && !normAbs.startsWith(normWs + '/')) return null;
   return abs;
 }
 const TEXT_EXT = /\.(md|markdown|txt|json|js|jsx|ts|tsx|css|scss|html|htm|xml|yaml|yml|csv|py|sh|env|log|sql|toml|ini|conf)$/i;
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i;
-function fsRead({ jobId, client, path }) {
-  const { workspace } = prepareUser(client);
-  const abs = safeResolve(workspace, path);
+function fsRead({ jobId, path }) {
+  const abs = safeResolve(path);
   if (!abs || !existsSync(abs)) { send({ type: 'fs-read', jobId, path, error: 'arquivo nao encontrado' }); return; }
   const name = abs.split(/[\\/]/).pop();
   try {

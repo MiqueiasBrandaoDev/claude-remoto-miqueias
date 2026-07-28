@@ -42,10 +42,10 @@ export function DocumentViewer({
           )}
           <button
             onClick={onClose}
-            className="grid place-items-center w-7 h-7 rounded-md text-muted-foreground hover:bg-panel-2 hover:text-foreground transition-colors"
+            className="grid place-items-center w-9 h-9 sm:w-7 sm:h-7 rounded-md text-muted-foreground hover:bg-panel-2 hover:text-foreground transition-colors"
             title="Fechar"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5 sm:w-4 sm:h-4" />
           </button>
         </div>
       </div>
@@ -54,13 +54,13 @@ export function DocumentViewer({
         {loading && <div className="p-6 text-sm text-muted-foreground">carregando arquivo...</div>}
 
         {!loading && file && file.kind === "text" && isMarkdown(file.name) && (
-          <div className="max-w-3xl mx-auto p-6">
+          <div className="max-w-3xl mx-auto p-4 sm:p-6">
             <div className="md text-[15px]" dangerouslySetInnerHTML={{ __html: mdToHtml(file.content) }} />
           </div>
         )}
 
         {!loading && file && file.kind === "text" && !isMarkdown(file.name) && (
-          <pre className="p-4 text-[13px] leading-relaxed font-mono whitespace-pre overflow-x-auto">
+          <pre className="p-3 sm:p-4 text-[12px] sm:text-[13px] leading-relaxed font-mono whitespace-pre overflow-x-auto">
             <code>{file.content}</code>
           </pre>
         )}

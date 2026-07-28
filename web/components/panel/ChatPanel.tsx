@@ -3,7 +3,7 @@
 import React from "react";
 import { Paperclip, ArrowUp, FilePlus2, FilePen, Terminal, Eye, Search, Globe } from "lucide-react";
 import { Robot } from "@/components/ui/robot";
-import { VoiceInput } from "@/components/ui/voice-input";
+import { VoiceInput, type VoiceInputHandle } from "@/components/ui/voice-input";
 import type { ChatMessage, SlashCommand } from "@/hooks/useWorker";
 import { mdToHtml } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ function ActivityCard({
       onClick={() => path && clickable && onOpenFile?.(path)}
       disabled={!clickable}
       className={cn(
-        "flex items-center gap-2 mb-3 w-full text-left text-sm border border-border rounded-lg px-3 py-2 bg-panel-2/40 transition-colors",
+        "flex items-center gap-2 mb-3 w-full text-left text-[13px] sm:text-sm border border-border rounded-lg px-3 py-2 bg-panel-2/40 transition-colors",
         clickable ? "hover:border-primary/50 hover:bg-panel-2 cursor-pointer" : "cursor-default"
       )}
     >
@@ -47,7 +47,7 @@ function ActivityCard({
       ) : (
         <span className="text-muted-foreground truncate">
           <span className="capitalize">{action}</span>{" "}
-          <code className="text-foreground/90 font-mono text-[13px]">{label}</code>
+          <code className="text-foreground/90 font-mono text-[12px] sm:text-[13px]">{label}</code>
         </span>
       )}
     </button>
@@ -74,6 +74,7 @@ export function ChatPanel({
   const [cmdDismissed, setCmdDismissed] = React.useState(false);
   const taRef = React.useRef<HTMLTextAreaElement>(null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  const voiceRef = React.useRef<VoiceInputHandle>(null);
 
   // autocomplete de slash: ao digitar "/" (sem espaco) mostra a janela de comandos
   const slashActive = input.startsWith("/") && !input.includes(" ") && !input.includes("\n");
@@ -104,6 +105,7 @@ export function ChatPanel({
   const submit = (text: string) => {
     const v = (text || "").trim();
     if (!v || !online || streaming) return;
+    voiceRef.current?.stop(); // ao enviar, para a gravacao de audio se estiver rolando
     onSubmit(v);
     setInput("");
     requestAnimationFrame(autoGrow);
@@ -114,21 +116,20 @@ export function ChatPanel({
   return (
     <div className="h-full flex flex-col min-w-0">
       {/* mensagens */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden">
         {empty ? (
-          <div className="h-full flex flex-col items-center justify-center text-center px-6">
-            <Robot className="w-16 h-16 mb-4 drop-shadow-[0_0_18px_rgba(242,193,78,0.35)]" />
-            <h2 className="text-xl font-semibold mb-2">Converse com o Claude</h2>
+          <div className="h-full flex flex-col items-center justify-center text-center px-5 sm:px-6">
+            <Robot className="w-14 h-14 sm:w-16 sm:h-16 mb-4 drop-shadow-[0_0_18px_rgba(242,193,78,0.35)]" />
+            <h2 className="text-lg sm:text-xl font-semibold mb-2">Converse com o Claude</h2>
             <p className="text-sm text-muted-foreground max-w-sm mb-7 leading-relaxed">
-              Ele le e edita os arquivos desta pasta. Peca pra resumir, organizar, corrigir ou criar algo, e arraste
-              arquivos aqui pra subir.
+              Ele lê e edita os arquivos desta pasta. Peça pra resumir, organizar, corrigir ou criar algo.
             </p>
             <div className="flex flex-col gap-2.5 w-full max-w-sm">
               {PILLS.map((p) => (
                 <button
                   key={p}
                   onClick={() => submit(p)}
-                  className="border border-border rounded-full px-4 py-3 text-sm hover:border-primary hover:bg-primary/5 transition-colors"
+                  className="border border-border rounded-full px-4 py-3 text-sm hover:border-primary hover:bg-primary/5 active:bg-primary/10 transition-colors"
                 >
                   {p}
                 </button>
@@ -136,12 +137,12 @@ export function ChatPanel({
             </div>
           </div>
         ) : (
-          <div className="max-w-3xl mx-auto px-4 py-5">
+          <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-5">
             {messages.map((m, i) => {
               if (m.role === "user") {
                 return (
                   <div key={i} className="flex justify-end mb-4">
-                    <div className="bg-panel-2 border border-border rounded-2xl rounded-br-md px-4 py-2.5 max-w-[80%] whitespace-pre-wrap">
+                    <div className="bg-panel-2 border border-border rounded-2xl rounded-br-md px-3.5 sm:px-4 py-2.5 max-w-[85%] whitespace-pre-wrap break-words text-[15px]">
                       {m.text}
                     </div>
                   </div>
@@ -152,10 +153,10 @@ export function ChatPanel({
               }
               const isLast = i === messages.length - 1;
               return (
-                <div key={i} className="flex gap-2.5 mb-5">
+                <div key={i} className="flex gap-2 sm:gap-2.5 mb-5">
                   <Robot className="w-6 h-6 shrink-0 mt-0.5" />
                   <div
-                    className={cn("md text-[15px] pt-0.5 flex-1 min-w-0", streaming && isLast && "cursor-blink")}
+                    className={cn("md text-[15px] pt-0.5 flex-1 min-w-0 break-words", streaming && isLast && "cursor-blink")}
                     dangerouslySetInnerHTML={{ __html: mdToHtml(m.text) }}
                   />
                 </div>
@@ -166,11 +167,11 @@ export function ChatPanel({
       </div>
 
       {/* composer */}
-      <div className="px-4 pb-2 pt-1 shrink-0">
+      <div className="px-3 sm:px-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 shrink-0">
         <div className="max-w-3xl mx-auto relative">
           {/* janela de slash commands (autocomplete estilo VS Code) */}
           {cmdOpen && (
-            <div className="absolute bottom-full left-0 right-0 mb-2 max-h-72 overflow-y-auto bg-panel border border-border rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.55)] py-1.5 z-30">
+            <div className="absolute bottom-full left-0 right-0 mb-2 max-h-60 sm:max-h-72 overflow-y-auto bg-panel border border-border rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.55)] py-1.5 z-30">
               <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">Comandos</div>
               {filteredCmds.map((c, i) => (
                 <button
@@ -178,7 +179,7 @@ export function ChatPanel({
                   onMouseDown={(e) => { e.preventDefault(); pickCommand(c); }}
                   onMouseEnter={() => setCmdIndex(i)}
                   className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2 text-left transition-colors",
+                    "w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors",
                     i === cmdIndex ? "bg-panel-2" : "hover:bg-panel-2/60"
                   )}
                 >
@@ -189,11 +190,11 @@ export function ChatPanel({
               ))}
             </div>
           )}
-          <div className="flex items-end gap-2 bg-panel border border-border rounded-[26px] px-2 pl-3.5 py-2 focus-within:border-primary/50 transition-colors">
+          <div className="flex items-end gap-1.5 sm:gap-2 bg-panel border border-border rounded-[26px] px-2 pl-2 sm:pl-3.5 py-2 focus-within:border-primary/50 transition-colors">
             <button
               disabled
               title="Anexar (em breve)"
-              className="grid place-items-center w-9 h-9 rounded-full text-muted-foreground/50 cursor-not-allowed"
+              className="hidden sm:grid place-items-center w-9 h-9 rounded-full text-muted-foreground/50 cursor-not-allowed shrink-0"
             >
               <Paperclip className="w-[18px] h-[18px]" />
             </button>
@@ -219,21 +220,22 @@ export function ChatPanel({
                   submit(input);
                 }
               }}
-              placeholder="Peca algo ao Claude... (cole prints aqui)"
-              className="flex-1 bg-transparent outline-none resize-none py-2 text-[15px] placeholder:text-muted-foreground max-h-40"
+              placeholder="Peça algo ao Claude..."
+              className="flex-1 min-w-0 bg-transparent outline-none resize-none py-2 pl-1.5 sm:pl-0 text-base placeholder:text-muted-foreground max-h-40"
             />
-            <VoiceInput onTranscript={(t) => setInput(t)} className="shrink-0" />
+            <VoiceInput ref={voiceRef} onTranscript={(t) => setInput(t)} className="shrink-0" />
             <button
               onClick={() => submit(input)}
               disabled={!online || streaming || !input.trim()}
               title="Enviar"
-              className="grid place-items-center w-9 h-9 rounded-full bg-primary text-primary-foreground hover:bg-[var(--accent-soft)] disabled:bg-panel-2 disabled:text-muted-foreground transition-colors shrink-0"
+              className="grid place-items-center w-10 h-10 rounded-full bg-primary text-primary-foreground hover:bg-[var(--accent-soft)] active:scale-95 disabled:bg-panel-2 disabled:text-muted-foreground transition-all shrink-0"
             >
               <ArrowUp className="w-[18px] h-[18px]" />
             </button>
           </div>
           <div className="text-center text-[11px] text-muted-foreground py-1.5">
-            Anexe ou cole arquivos · Enter envia · Shift+Enter quebra linha
+            <span className="hidden sm:inline">Enter envia · Shift+Enter quebra linha</span>
+            <span className="sm:hidden">Digite / para ver os comandos</span>
           </div>
         </div>
       </div>

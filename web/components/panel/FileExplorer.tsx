@@ -32,7 +32,7 @@ function Node({
         <button
           onClick={() => setOpen((v) => !v)}
           style={pad}
-          className="w-full flex items-center gap-1.5 py-1.5 pr-2 rounded-md text-sm text-foreground/90 hover:bg-panel-2 transition-colors"
+          className="w-full flex items-center gap-1.5 py-2 sm:py-1.5 pr-2 rounded-md text-sm text-foreground/90 hover:bg-panel-2 active:bg-panel-2 transition-colors"
         >
           <ChevronRight
             className={cn("w-3.5 h-3.5 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")}
@@ -62,8 +62,8 @@ function Node({
       onClick={() => onOpenFile(node.path)}
       style={pad}
       className={cn(
-        "w-full flex items-center gap-1.5 py-1.5 pr-2 rounded-md text-sm transition-colors",
-        active ? "bg-primary/15 text-primary" : "text-foreground/80 hover:bg-panel-2"
+        "w-full flex items-center gap-1.5 py-2 sm:py-1.5 pr-2 rounded-md text-sm transition-colors",
+        active ? "bg-primary/15 text-primary" : "text-foreground/80 hover:bg-panel-2 active:bg-panel-2"
       )}
     >
       <span className="w-3.5 shrink-0" />
