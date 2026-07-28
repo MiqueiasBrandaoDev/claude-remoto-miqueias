@@ -24,6 +24,8 @@ const PORT = process.env.PORT || 8787;
 // Em producao isso vira algo mais forte; aqui e so pra ninguem plugar um
 // worker aleatorio na sua VPS.
 const WORKER_TOKEN = process.env.WORKER_TOKEN || 'troque-esse-token';
+// token que o navegador (cliente logado) apresenta. Vazio = sem trava (dev).
+const CLIENT_TOKEN = process.env.CLIENT_TOKEN || '';
 
 // ---------------------------------------------------------------------------
 // Estado em memoria (POC). Um worker por vez; clientes (navegadores) varios.
@@ -89,6 +91,13 @@ wss.on('connection', (sock) => {
         broadcastToClients({ type: 'status', workerOnline: true });
         send(sock, { type: 'registered' });
       } else {
+        // cliente (navegador): se CLIENT_TOKEN estiver definido, exige que bata
+        // (o token so e entregue pra quem passou pelo login). Sem CLIENT_TOKEN = dev.
+        if (CLIENT_TOKEN && msg.token !== CLIENT_TOKEN) {
+          send(sock, { type: 'error', message: 'nao autorizado' });
+          sock.close();
+          return;
+        }
         sock.role = 'client';
         clients.add(sock);
         console.log('[client] navegador conectado. total:', clients.size);

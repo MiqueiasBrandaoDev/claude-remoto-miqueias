@@ -47,6 +47,7 @@ export function useWorker() {
   const wsRef = useRef<WebSocket | null>(null);
   const runHandlers = useRef<Map<string, RunHandlers>>(new Map());
   const pending = useRef<Map<string, (msg: any) => void>>(new Map());
+  const clientToken = useRef("");
 
   useEffect(() => {
     let closed = false;
@@ -56,7 +57,7 @@ export function useWorker() {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
-      ws.onopen = () => ws.send(JSON.stringify({ type: "register", role: "client" }));
+      ws.onopen = () => ws.send(JSON.stringify({ type: "register", role: "client", token: clientToken.current }));
       ws.onclose = () => {
         setOnline(false);
         if (!closed) reconnectTimer = setTimeout(connect, 1500);
@@ -88,7 +89,15 @@ export function useWorker() {
         }
       };
     }
-    connect();
+    // pega o token de conexao (so vem se estiver logado) e ai conecta
+    (async () => {
+      try {
+        const r = await fetch("/api/ws-token");
+        if (r.ok) clientToken.current = (await r.json()).token || "";
+      } catch {}
+      if (!closed) connect();
+    })();
+
     return () => {
       closed = true;
       clearTimeout(reconnectTimer);
