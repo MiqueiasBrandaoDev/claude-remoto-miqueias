@@ -13,8 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Assistente do seu workspace",
-  description: "Painel de IA da sua empresa",
+  applicationName: "Claude",
+  title: "Claude — Assistente do seu workspace",
+  description: "Assistente de IA do seu workspace",
+  appleWebApp: {
+    capable: true,
+    title: "Claude",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {

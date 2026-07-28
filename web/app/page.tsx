@@ -253,7 +253,7 @@ export default function Page() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <Header
         explorerOpen={explorerOpen}
         onToggleExplorer={toggleExplorer}
