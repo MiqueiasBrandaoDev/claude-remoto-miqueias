@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Claude - Assistente do seu workspace</title>
+<style>
+  :root {
+    --bg: #0b0a08;
+    --panel: #141210;
+    --panel-2: #1b1813;
+    --border: #2a2620;
+    --text: #ece7de;
+    --muted: #8a8377;
+    --accent: #e6a94a;      /* dourado/ambar */
+    --accent-soft: #f2c76a;
+    --robot: #f2c14e;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 15px;
+    display: flex; flex-direction: column; height: 100vh;
+    /* glow ambar sutil no topo, igual ao print */
+    background-image: radial-gradient(120% 55% at 50% -8%, rgba(230,169,74,0.16) 0%, rgba(230,169,74,0.04) 30%, transparent 60%);
+  }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .robot { width: 30px; height: 30px; }
+  .brand .titles { line-height: 1.15; }
+  .brand .titles b { font-size: 15px; font-weight: 600; }
+  .brand .titles span { display: block; font-size: 12px; color: var(--muted); }
+  .head-right { display: flex; align-items: center; gap: 6px; }
+  .icon-btn {
+    width: 32px; height: 32px; display: grid; place-items: center;
+    border-radius: 8px; color: var(--muted); cursor: pointer; background: transparent; border: none;
+  }
+  .icon-btn:hover { background: var(--panel-2); color: var(--text); }
+  .icon-btn svg { width: 18px; height: 18px; }
+  .client-select {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; font-family: inherit; margin-right: 4px;
+  }
+  .client-select:focus { outline: none; border-color: var(--accent); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #6b3b3b; margin-right: 2px; }
+  .status-dot.on { background: #57d06a; box-shadow: 0 0 7px #57d06a; }
+
+  /* ---------- messages ---------- */
+  .scroll { flex: 1; overflow-y: auto; }
+  .messages { max-width: 760px; margin: 0 auto; padding: 20px 18px 8px; }
+  .msg { margin-bottom: 18px; display: flex; gap: 10px; }
+  .msg .avatar { width: 26px; height: 26px; flex: 0 0 26px; margin-top: 2px; }
+  .msg.user { justify-content: flex-end; }
+  .msg.user .bubble {
+    background: var(--panel-2); border: 1px solid var(--border);
+    padding: 10px 14px; border-radius: 14px 14px 4px 14px; max-width: 80%;
+  }
+  .msg.bot .bubble { padding-top: 2px; word-break: break-word; max-width: 100%; line-height: 1.6; }
+  .bubble a { color: var(--accent); }
+
+  /* ---------- markdown renderizado dentro da resposta ---------- */
+  .bubble p { margin: 0 0 10px; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble h1, .bubble h2, .bubble h3 { margin: 14px 0 8px; line-height: 1.3; font-weight: 600; }
+  .bubble h1 { font-size: 20px; }
+  .bubble h2 { font-size: 17px; }
+  .bubble h3 { font-size: 15px; }
+  .bubble ul, .bubble ol { margin: 0 0 10px; padding-left: 22px; }
+  .bubble li { margin: 4px 0; }
+  .bubble strong { font-weight: 700; color: #fff; }
+  .bubble em { font-style: italic; }
+  .bubble code {
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 5px;
+    padding: 1px 5px; font-family: ui-monospace, 'JetBrains Mono', monospace; font-size: 13px;
+  }
+  .bubble pre {
+    background: #0f0d0a; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; overflow-x: auto; margin: 0 0 10px;
+  }
+  .bubble pre code { background: none; border: none; padding: 0; font-size: 13px; line-height: 1.5; }
+  .bubble blockquote {
+    border-left: 3px solid var(--accent); margin: 0 0 10px; padding: 2px 0 2px 12px; color: var(--muted);
+  }
+  .cursor::after { content: '▍'; color: var(--accent); animation: blink 1s steps(1) infinite; margin-left: 1px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ---------- empty state ---------- */
+  .empty { text-align: center; padding: 8vh 20px 0; }
+  .empty .robot-big { width: 64px; height: 64px; margin: 0 auto 18px; filter: drop-shadow(0 0 18px rgba(242,193,78,0.35)); }
+  .empty h2 { font-size: 20px; margin: 0 0 8px; font-weight: 600; }
+  .empty p { color: var(--muted); font-size: 14px; max-width: 340px; margin: 0 auto 26px; line-height: 1.5; }
+  .pills { display: flex; flex-direction: column; gap: 10px; max-width: 340px; margin: 0 auto; }
+  .pill {
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 12px 18px; font-size: 13.5px; cursor: pointer;
+    text-align: center; font-family: inherit; transition: border-color .15s, background .15s;
+  }
+  .pill:hover { border-color: var(--accent); background: rgba(230,169,74,0.06); }
+
+  /* ---------- input ---------- */
+  .composer { padding: 10px 18px 8px; }
+  .composer-inner { max-width: 760px; margin: 0 auto; }
+  .inputbar {
+    display: flex; align-items: flex-end; gap: 8px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 26px;
+    padding: 8px 8px 8px 14px;
+  }
+  .inputbar:focus-within { border-color: rgba(230,169,74,0.5); }
+  .inputbar textarea {
+    flex: 1; background: transparent; border: none; color: var(--text);
+    font-family: inherit; font-size: 15px; resize: none; max-height: 160px; padding: 8px 0; line-height: 1.4;
+  }
+  .inputbar textarea:focus { outline: none; }
+  .inputbar textarea::placeholder { color: var(--muted); }
+  .send-btn {
+    width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; border: none; cursor: pointer;
+    background: var(--accent); color: #1a1206; display: grid; place-items: center;
+  }
+  .send-btn:hover { background: var(--accent-soft); }
+  .send-btn:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+  .send-btn svg { width: 18px; height: 18px; }
+  .foot { text-align: center; color: var(--muted); font-size: 11.5px; padding: 6px 0 4px; }
+
+  /* ---------- painel de historico ---------- */
+  .history-panel {
+    position: fixed; top: 58px; right: 18px; width: 330px; max-height: 66vh; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.55); z-index: 50; padding: 8px; display: none;
+  }
+  .history-panel.open { display: block; }
+  .hp-head { font-size: 12px; color: var(--muted); padding: 6px 8px 8px; display: flex; justify-content: space-between; }
+  .history-item { padding: 9px 10px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+  .history-item:hover { background: var(--panel-2); border-color: var(--border); }
+  .history-item.active { border-color: var(--accent); background: rgba(230,169,74,0.06); }
+  .hi-title { font-size: 13.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hi-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .history-empty { padding: 18px 10px; color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+  <!-- ============ HEADER ============ -->
+  <header>
+    <div class="brand">
+      <svg class="robot" viewBox="0 0 32 32" aria-hidden="true"><use href="#robot"/></svg>
+      <div class="titles">
+        <b>Claude</b>
+        <span>Assistente do seu workspace</span>
+      </div>
+    </div>
+    <div class="head-right">
+      <span id="dot" class="status-dot" title="worker"></span>
+      <select id="client" class="client-select" title="workspace do cliente">
+        <option value="tuba-lyra">tuba-lyra</option>
+        <option value="clinica-x">clinica-x</option>
+      </select>
+      <button class="icon-btn" title="Configuracoes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+      <button class="icon-btn" id="historyBtn" title="Historico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg></button>
+      <button class="icon-btn" id="newChat" title="Nova conversa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    </div>
+  </header>
+
+  <!-- ============ MESSAGES ============ -->
+  <div class="scroll">
+    <div class="messages" id="messages">
+      <div class="empty" id="empty">
+        <svg class="robot-big" viewBox="0 0 32 32" aria-hidden="true"><use href="#robot"/></svg>
+        <h2>Converse com o Claude</h2>
+        <p>Ele le e edita os arquivos desta pasta. Peca pra resumir, organizar, corrigir ou criar algo, e arraste arquivos aqui pra subir.</p>
+        <div class="pills">
+          <button class="pill">Resuma os arquivos desta pasta</button>
+          <button class="pill">Organize meus arquivos por tipo</button>
+          <button class="pill">Crie um documento de resumo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COMPOSER ============ -->
+  <div class="composer">
+    <div class="composer-inner">
+      <div class="inputbar">
+        <button class="icon-btn" title="Anexar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+        <textarea id="prompt" rows="1" placeholder="Peca algo ao Claude... (cole prints aqui)"></textarea>
+        <button class="icon-btn" title="Audio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg></button>
+        <button class="send-btn" id="send" title="Enviar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+      </div>
+      <div class="foot">Anexe ou cole arquivos · Enter envia · Shift+Enter quebra linha</div>
+    </div>
+  </div>
+
+  <!-- ============ PAINEL DE HISTORICO ============ -->
+  <div id="historyPanel" class="history-panel">
+    <div class="hp-head"><span>Conversas deste cliente</span><span id="hpClient"></span></div>
+    <div id="historyList"></div>
+  </div>
+
+  <!-- ============ robo (SVG pixel-art reutilizavel) ============ -->
+  <svg width="0" height="0" style="position:absolute"><defs>
+    <g id="robot">
+      <!-- antenas -->
+      <rect x="9" y="3" width="2" height="4" fill="#f2c14e"/>
+      <rect x="21" y="3" width="2" height="4" fill="#f2c14e"/>
+      <!-- cabeca -->
+      <rect x="5" y="7" width="22" height="18" rx="5" fill="#f2c14e"/>
+      <!-- olhos -->
+      <rect x="11" y="13" width="3" height="6" rx="1.2" fill="#1a1206"/>
+      <rect x="18" y="13" width="3" height="6" rx="1.2" fill="#1a1206"/>
+    </g>
+  </defs></svg>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+  let ws, workerOnline = false, sending = false, currentBot = null, currentBotRaw = '';
+  let activeSession = null; // sessao atual (pra continuar a conversa via --resume)
+
+  // -------- Markdown -> HTML (minimo, sem dependencia externa) --------
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function inlineMd(s) {
+    return s
+      .replace(/`([^`]+)`/g, (_, c) => '<code>' + c + '</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+  function mdToHtml(md) {
+    const lines = escapeHtml(md).split('\n');
+    let html = '', inCode = false, codeBuf = [], listType = null, listBuf = [];
+    const flushList = () => {
+      if (!listType) return;
+      html += '<' + listType + '>' + listBuf.map((li) => '<li>' + inlineMd(li) + '</li>').join('') + '</' + listType + '>';
+      listType = null; listBuf = [];
+    };
+    for (const raw of lines) {
+      const fence = raw.trim().match(/^```/);
+      if (fence) {
+        if (inCode) { html += '<pre><code>' + codeBuf.join('\n') + '</code></pre>'; inCode = false; codeBuf = []; }
+        else { flushList(); inCode = true; }
+        continue;
+      }
+      if (inCode) { codeBuf.push(raw); continue; }
+      const h = raw.match(/^(#{1,6})\s+(.*)$/);
+      if (h) { flushList(); const n = h[1].length; html += `<h${n}>` + inlineMd(h[2]) + `</h${n}>`; continue; }
+      const bq = raw.match(/^>\s?(.*)$/);
+      if (bq) { flushList(); html += '<blockquote>' + inlineMd(bq[1]) + '</blockquote>'; continue; }
+      const ol = raw.match(/^\s*\d+\.\s+(.*)$/);
+      const ul = raw.match(/^\s*[-*]\s+(.*)$/);
+      if (ol) { if (listType && listType !== 'ol') flushList(); listType = 'ol'; listBuf.push(ol[1]); continue; }
+      if (ul) { if (listType && listType !== 'ul') flushList(); listType = 'ul'; listBuf.push(ul[1]); continue; }
+      if (raw.trim() === '') { flushList(); continue; }
+      flushList(); html += '<p>' + inlineMd(raw) + '</p>';
+    }
+    flushList();
+    if (inCode) html += '<pre><code>' + codeBuf.join('\n') + '</code></pre>';
+    return html;
+  }
+
+  function setStatus(on) {
+    workerOnline = on;
+    $('dot').classList.toggle('on', on);
+    updateSendState();
+  }
+  function updateSendState() { $('send').disabled = !workerOnline || sending; }
+
+  function connect() {
+    ws = new WebSocket(wsUrl);
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'register', role: 'client' }));
+    ws.onclose = () => { setStatus(false); setTimeout(connect, 1500); };
+    ws.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'status') setStatus(msg.workerOnline);
+      if (msg.type === 'chunk' && currentBot) {
+        currentBotRaw += msg.text;
+        currentBot.innerHTML = mdToHtml(currentBotRaw);
+        scrollDown();
+      }
+      if (msg.type === 'done') {
+        if (!activeSession && msg.sessionId) activeSession = msg.sessionId; // fixa a sessao nova pra poder continuar
+        finishBot();
+      }
+      if (msg.type === 'job-error') { if (currentBot) currentBot.textContent = 'Erro: ' + msg.message; finishBot(); }
+      if (msg.type === 'history-list') renderHistory(msg.sessions || []);
+      if (msg.type === 'history-load') renderLoaded(msg.sessionId, msg.messages || []);
+    };
+  }
+
+  function scrollDown() { const s = document.querySelector('.scroll'); s.scrollTop = s.scrollHeight; }
+
+  function addMessage(role, text) {
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + role;
+    if (role === 'bot') {
+      const av = document.createElement('svg');
+      // usa innerHTML pra referenciar o simbolo do robo
+      const holder = document.createElement('div');
+      holder.innerHTML = '<svg class="avatar" viewBox="0 0 32 32"><use href="#robot"/></svg>';
+      wrap.appendChild(holder.firstChild);
+    }
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    if (role === 'bot' && text) bubble.innerHTML = mdToHtml(text);
+    else bubble.textContent = text;
+    wrap.appendChild(bubble);
+    $('messages').appendChild(wrap);
+    scrollDown();
+    return bubble;
+  }
+
+  function finishBot() {
+    if (currentBot) currentBot.classList.remove('cursor');
+    currentBot = null;
+    sending = false;
+    updateSendState();
+  }
+
+  function submit(text) {
+    text = (text || '').trim();
+    if (!text || !workerOnline || sending) return;
+    showEmpty(false);
+    addMessage('user', text);
+    currentBot = addMessage('bot', '');
+    currentBotRaw = '';
+    currentBot.classList.add('cursor');
+    sending = true; updateSendState();
+    ws.send(JSON.stringify({
+      type: 'run', jobId: 'job_' + Date.now(), prompt: text,
+      client: $('client').value, resume: activeSession || undefined,
+    }));
+    $('prompt').value = ''; autoGrow();
+  }
+
+  // pills
+  document.querySelectorAll('.pill').forEach((p) => p.onclick = () => submit(p.textContent));
+
+  // enviar
+  $('send').onclick = () => submit($('prompt').value);
+  $('prompt').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit($('prompt').value); }
+  });
+
+  // textarea auto-grow
+  function autoGrow() { const t = $('prompt'); t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 160) + 'px'; }
+  $('prompt').addEventListener('input', autoGrow);
+
+  // -------- controle de conversa / empty state --------
+  function clearMessages() { document.querySelectorAll('#messages .msg').forEach((n) => n.remove()); }
+  function showEmpty(show) { const e = $('empty'); if (e) e.style.display = show ? '' : 'none'; }
+  function newConversation() {
+    clearMessages(); showEmpty(true); activeSession = null; currentBot = null; currentBotRaw = '';
+    closeHistory();
+  }
+  $('newChat').onclick = newConversation;
+
+  // trocar de cliente = comeca do zero no contexto do outro cliente
+  $('client').addEventListener('change', newConversation);
+
+  // -------- historico --------
+  const panel = $('historyPanel');
+  function closeHistory() { panel.classList.remove('open'); }
+  function openHistory() {
+    $('hpClient').textContent = $('client').value;
+    $('historyList').innerHTML = '<div class="history-empty">carregando...</div>';
+    panel.classList.add('open');
+    ws.send(JSON.stringify({ type: 'history-list', jobId: 'hist_' + Date.now(), client: $('client').value }));
+  }
+  $('historyBtn').onclick = (e) => {
+    e.stopPropagation();
+    if (panel.classList.contains('open')) closeHistory(); else openHistory();
+  };
+  // fecha ao clicar fora
+  document.addEventListener('click', (e) => {
+    if (panel.classList.contains('open') && !panel.contains(e.target)) closeHistory();
+  });
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    } catch { return ''; }
+  }
+
+  function renderHistory(sessions) {
+    const list = $('historyList');
+    if (!sessions.length) { list.innerHTML = '<div class="history-empty">Nenhuma conversa ainda.</div>'; return; }
+    list.innerHTML = '';
+    for (const s of sessions) {
+      const item = document.createElement('div');
+      item.className = 'history-item' + (s.sessionId === activeSession ? ' active' : '');
+      item.innerHTML = '<div class="hi-title"></div><div class="hi-meta"></div>';
+      item.querySelector('.hi-title').textContent = s.title;
+      item.querySelector('.hi-meta').textContent = fmtDate(s.updatedAt) + ' · ' + s.turns + ' msg';
+      item.onclick = () => {
+        ws.send(JSON.stringify({ type: 'history-load', jobId: 'load_' + Date.now(), client: $('client').value, sessionId: s.sessionId }));
+        closeHistory();
+      };
+      list.appendChild(item);
+    }
+  }
+
+  function renderLoaded(sessionId, messages) {
+    clearMessages(); showEmpty(false);
+    for (const m of messages) addMessage(m.role === 'assistant' ? 'bot' : 'user', m.text);
+    activeSession = sessionId; // continua daqui pra frente
+    scrollDown();
+  }
+
+  connect();
+</script>
+</body>
+</html>

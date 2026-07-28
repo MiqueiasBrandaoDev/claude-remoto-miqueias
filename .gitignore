@@ -1,0 +1,17 @@
+# segredos
+.env
+
+# dependencias
+node_modules/
+**/node_modules/
+
+# build
+web/.next/
+**/*.tsbuildinfo
+
+# dados de runtime (historico/config por usuario)
+worker/usuarios/
+worker/empresa/workspace/.claude/
+
+# logs
+*.log

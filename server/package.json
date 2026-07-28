@@ -1,0 +1,13 @@
+{
+  "name": "painel-ia-server",
+  "version": "0.1.0",
+  "description": "Servidor (VPS) - serve o painel e faz a ponte WebSocket com o worker local",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

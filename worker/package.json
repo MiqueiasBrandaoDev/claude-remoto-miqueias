@@ -1,0 +1,14 @@
+{
+  "name": "painel-ia-worker",
+  "version": "0.1.0",
+  "description": "Worker local - roda na maquina do usuario, executa o Claude Code logado e devolve o resultado para a VPS",
+  "type": "module",
+  "main": "worker.js",
+  "scripts": {
+    "start": "node worker.js"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.0"
+  }
+}
