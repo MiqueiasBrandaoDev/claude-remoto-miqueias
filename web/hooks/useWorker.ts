@@ -15,6 +15,7 @@ export type HistorySession = {
   title: string;
   updatedAt: string | null;
   turns: number;
+  custom?: boolean; // titulo definido manualmente (rename), igual a aba do VS Code
 };
 
 export type Activity = { tool: string; action: string; path?: string | null; label?: string | null };

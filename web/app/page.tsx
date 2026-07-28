@@ -7,7 +7,7 @@ import { FileExplorer } from "@/components/panel/FileExplorer";
 import { DocumentViewer } from "@/components/panel/DocumentViewer";
 import { ChatPanel } from "@/components/panel/ChatPanel";
 import { Panel, PanelGroup } from "react-resizable-panels";
-import { Unplug } from "lucide-react";
+import { Unplug, Search, X } from "lucide-react";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import { useWorker, type ChatMessage, type TreeNode, type HistorySession, type FileContent, type SlashCommand } from "@/hooks/useWorker";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,7 @@ export default function Page() {
 
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historySessions, setHistorySessions] = React.useState<HistorySession[] | null>(null);
+  const [historyQuery, setHistoryQuery] = React.useState("");
   const [commands, setCommands] = React.useState<SlashCommand[]>([]);
   const [modelName, setModelName] = React.useState("sonnet");
   const [sessionCost, setSessionCost] = React.useState(0);
@@ -240,6 +241,7 @@ export default function Page() {
   const openHistory = async () => {
     setHistoryOpen(true);
     setHistorySessions(null);
+    setHistoryQuery("");
     const s = await listHistory(client);
     setHistorySessions(s);
   };
@@ -434,13 +436,32 @@ export default function Page() {
                     fechar
                   </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-2">
+                <div className="px-3 pt-3 pb-2 shrink-0">
+                  <div className="flex items-center gap-2 bg-panel-2 border border-border rounded-lg px-2.5 focus-within:border-primary/50 transition-colors">
+                    <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+                    <input
+                      value={historyQuery}
+                      onChange={(e) => setHistoryQuery(e.target.value)}
+                      placeholder="Buscar conversa..."
+                      autoComplete="off"
+                      className="flex-1 min-w-0 bg-transparent outline-none py-2 text-base sm:text-sm placeholder:text-muted-foreground"
+                    />
+                    {historyQuery && (
+                      <button onClick={() => setHistoryQuery("")} className="text-muted-foreground hover:text-foreground shrink-0" title="Limpar">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2 pt-0">
                   {historySessions === null ? (
                     <div className="text-xs text-muted-foreground p-3">carregando...</div>
-                  ) : historySessions.length === 0 ? (
-                    <div className="text-xs text-muted-foreground p-3">Nenhuma conversa ainda.</div>
-                  ) : (
-                    historySessions.map((s) => (
+                  ) : (() => {
+                    const q = historyQuery.trim().toLowerCase();
+                    const list = q ? historySessions.filter((s) => s.title.toLowerCase().includes(q)) : historySessions;
+                    if (historySessions.length === 0) return <div className="text-xs text-muted-foreground p-3">Nenhuma conversa ainda.</div>;
+                    if (list.length === 0) return <div className="text-xs text-muted-foreground p-3">Nada encontrado para “{historyQuery}”.</div>;
+                    return list.map((s) => (
                       <button
                         key={s.sessionId}
                         onClick={() => pickSession(s.sessionId)}
@@ -449,13 +470,16 @@ export default function Page() {
                           s.sessionId === activeSession && "border-primary bg-primary/5"
                         )}
                       >
-                        <div className="text-[13.5px] truncate">{s.title}</div>
+                        <div className="flex items-center gap-1.5">
+                          {s.custom && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" title="renomeada" />}
+                          <span className="text-[13.5px] truncate">{s.title}</span>
+                        </div>
                         <div className="text-[11px] text-muted-foreground mt-0.5">
                           {fmtDate(s.updatedAt)} · {s.turns} msg
                         </div>
                       </button>
-                    ))
-                  )}
+                    ));
+                  })()}
                 </div>
               </motion.div>
             </>

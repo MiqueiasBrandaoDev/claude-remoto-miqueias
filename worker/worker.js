@@ -271,15 +271,18 @@ function extractText(content) {
   return '';
 }
 function readSessionMeta(file) {
-  let title = null, firstUser = null, updatedAt = null, turns = 0, sidechain = false;
+  // customTitle = nome que o usuario renomeou (igual a aba do VS Code). Vence tudo.
+  // aiTitle = titulo gerado pela IA. firstUser = primeira mensagem (ultimo recurso).
+  let customTitle = null, aiTitle = null, firstUser = null, updatedAt = null, turns = 0, sidechain = false;
   try {
     for (const line of readFileSync(file, 'utf8').split('\n')) {
       if (!line.trim()) continue;
       let o; try { o = JSON.parse(line); } catch { continue; }
       if (o.isSidechain === true) sidechain = true; // conversa de sub-agente: nao listar
-      if (o.type === 'ai-title' && o.aiTitle) title = o.aiTitle;
-      if (o.type === 'summary' && o.summary && !title) title = o.summary;
-      if (o.type === 'user' && o.message?.role === 'user') {
+      if (o.type === 'custom-title') { if (o.customTitle) customTitle = o.customTitle; } // rename manual (o mais recente vence)
+      else if (o.type === 'ai-title') { if (o.aiTitle) aiTitle = o.aiTitle; }
+      else if (o.type === 'summary') { if (o.summary && !aiTitle) aiTitle = o.summary; }
+      else if (o.type === 'user' && o.message?.role === 'user') {
         const t = extractText(o.message.content).trim();
         // ignora wrappers internos e comandos crus na contagem/titulo
         const real = t && !t.startsWith('<') && !t.startsWith('Caveat:');
@@ -290,9 +293,11 @@ function readSessionMeta(file) {
     }
   } catch {}
   const sessionId = file.split(/[\\/]/).pop().replace(/\.jsonl$/, '');
+  const title = customTitle || aiTitle || (firstUser ? firstUser.slice(0, 60) : 'Conversa sem titulo');
   return {
     sessionId,
-    title: title || (firstUser ? firstUser.slice(0, 60) : 'Conversa sem titulo'),
+    title,
+    custom: !!customTitle,
     updatedAt: updatedAt || null,
     turns,
     sidechain,
