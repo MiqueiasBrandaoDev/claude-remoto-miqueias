@@ -62,6 +62,16 @@ const CLAUDE_HOME = process.env.CLAUDE_CONFIG_DIR || join(os.homedir(), '.claude
 const MODEL_FILE = join(__dirname, 'model.txt');
 const VALID_MODELS = ['haiku', 'sonnet', 'opus'];
 
+// Instrucao extra pro painel: impede o modelo de "vazar" sintaxe de ferramenta
+// como texto (ex.: Agent({...}) / Task({...})), que renderiza horrivel no chat.
+const PANEL_SYSTEM =
+  'Voce e o assistente deste painel, conversando em portugues. Responda sempre ' +
+  'em linguagem natural e direta. NUNCA escreva chamadas de ferramenta como ' +
+  'texto (por exemplo Agent({...}), Task({...}) ou qualquer sintaxe de funcao): ' +
+  'use a ferramenta de verdade quando existir, ou, se ela nao estiver disponivel ' +
+  'aqui, apenas explique em uma frase o que voce faria. Nunca exponha sintaxe ' +
+  'interna de ferramentas pro usuario.';
+
 mkdirSync(WORKSPACE, { recursive: true });
 console.log('[worker] claude bin:', CLAUDE_BIN);
 console.log('[worker] workspace:', WORKSPACE);
@@ -175,6 +185,7 @@ function runJob({ jobId, prompt, permissionMode, resume }) {
     '--verbose',
     '--include-partial-messages',
     '--permission-mode', permissionMode || 'acceptEdits',
+    '--append-system-prompt', PANEL_SYSTEM,
   ];
   if (resume) args.push('--resume', resume);
 
@@ -351,6 +362,8 @@ function loadHistory({ jobId, sessionId }) {
           if (block?.type === 'text' && block.text && block.text.trim()) {
             const tx = block.text.trim();
             if (tx === 'No response requested.' || tx.startsWith('<command-')) continue;
+            // pula artefato de chamada de ferramenta vazada como texto (Agent({...}), Task({...}))
+            if (/^(Agent|Task)\s*\(\s*\{/.test(tx)) continue;
             messages.push({ role: 'assistant', text: block.text });
           } else if (block?.type === 'tool_use') {
             const a = buildActivity(block, WORKSPACE);
