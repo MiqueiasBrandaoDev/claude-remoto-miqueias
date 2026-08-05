@@ -70,11 +70,25 @@ console.log('[worker] auth:', OAUTH_TOKEN ? 'token da assinatura (env) OK' : 'cr
 
 let ws;
 let reconnectTimer = null;
+let heartbeat = null;
+
+// Keepalive: mantem a ponte viva mesmo em tarefas longas sem output (senao o
+// proxy derruba a conexao ociosa e a resposta se perde).
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeat = setInterval(() => send({ type: 'ping' }), 25000);
+}
+function stopHeartbeat() {
+  if (heartbeat) { clearInterval(heartbeat); heartbeat = null; }
+}
 
 function connect() {
   console.log('[worker] conectando em', SERVER_URL);
   ws = new WebSocket(SERVER_URL);
-  ws.on('open', () => ws.send(JSON.stringify({ type: 'register', role: 'worker', token: WORKER_TOKEN, host: os.hostname() })));
+  ws.on('open', () => {
+    ws.send(JSON.stringify({ type: 'register', role: 'worker', token: WORKER_TOKEN, host: os.hostname() }));
+    startHeartbeat();
+  });
   ws.on('message', (raw) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
@@ -88,7 +102,7 @@ function connect() {
     if (msg.type === 'list-commands') listCommands(msg);
     if (msg.type === 'set-model') setModel(msg);
   });
-  ws.on('close', () => { console.log('[worker] caiu, reconectando...'); scheduleReconnect(); });
+  ws.on('close', () => { console.log('[worker] caiu, reconectando...'); stopHeartbeat(); scheduleReconnect(); });
   ws.on('error', (err) => console.error('[worker] socket:', err.message));
 }
 function scheduleReconnect() {

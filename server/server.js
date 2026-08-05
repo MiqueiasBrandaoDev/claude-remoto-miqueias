@@ -77,6 +77,11 @@ wss.on('connection', (sock) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
+    // --- Keepalive: mantem a conexao viva durante tarefas longas em silencio
+    // (Claude pensando/pesquisando sem emitir nada). Sem isso, proxies derrubam
+    // conexoes ociosas por timeout. Worker e navegador mandam ping a cada 25s.
+    if (msg.type === 'ping') { send(sock, { type: 'pong' }); return; }
+
     // --- Handshake: define o papel da conexao ---
     if (msg.type === 'register') {
       if (msg.role === 'worker') {

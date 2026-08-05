@@ -53,14 +53,23 @@ export function useWorker() {
   useEffect(() => {
     let closed = false;
     let reconnectTimer: ReturnType<typeof setTimeout>;
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
 
     function connect() {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
-      ws.onopen = () => ws.send(JSON.stringify({ type: "register", role: "client", token: clientToken.current }));
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "register", role: "client", token: clientToken.current }));
+        // keepalive: mantem a conexao viva em tarefas longas sem output
+        clearInterval(heartbeat);
+        heartbeat = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
+        }, 25000);
+      };
       ws.onclose = () => {
         setOnline(false);
+        clearInterval(heartbeat);
         if (!closed) reconnectTimer = setTimeout(connect, 1500);
       };
       ws.onmessage = (ev) => {
@@ -102,6 +111,7 @@ export function useWorker() {
     return () => {
       closed = true;
       clearTimeout(reconnectTimer);
+      clearInterval(heartbeat);
       wsRef.current?.close();
     };
   }, []);
